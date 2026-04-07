@@ -485,9 +485,7 @@
 
   <div class="alert-box" id="alertBox"></div>
 
-  <div style="text-align: center; margin-top: 24px;">
-    <button onclick="backToAdmin()" style="background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; text-decoration: underline;">Admin Panel</button>
-  </div>
+  <!-- No visible admin link for employees -->
 </div>
 
 <!-- QR Code Library -->
@@ -611,8 +609,13 @@ function showEmployeeView(config) {
 }
 
 function backToAdmin() {
-  document.getElementById('adminPanel').classList.remove('hidden');
-  document.getElementById('employeeView').classList.remove('active');
+  const pw = prompt('Admin Password / Contraseña de Admin:');
+  if (pw === 'Panos2024!') {
+    document.getElementById('adminPanel').classList.remove('hidden');
+    document.getElementById('employeeView').classList.remove('active');
+  } else if (pw !== null) {
+    alert('Incorrect password / Contraseña incorrecta');
+  }
 }
 
 // ── Live Clock ──
@@ -775,6 +778,15 @@ window.addEventListener('load', () => {
       showEmployeeView(config);
     } catch (e) {
       console.error('Invalid QR data');
+    }
+  } else {
+    // No QR hash = admin access, require password
+    document.getElementById('adminPanel').classList.add('hidden');
+    const pw = prompt('Admin Password / Contraseña de Admin:');
+    if (pw === 'Panos2024!') {
+      document.getElementById('adminPanel').classList.remove('hidden');
+    } else {
+      document.body.innerHTML = '<div style="text-align:center;padding:60px 20px;font-family:sans-serif;"><h2>⛔ Access Denied / Acceso Denegado</h2><p style="color:#666;margin-top:12px;">Contact your supervisor for access.<br>Contacta a tu supervisor para acceso.</p></div>';
     }
   }
 });
