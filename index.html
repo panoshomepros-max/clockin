@@ -12,6 +12,7 @@
     --gold-light: #f0d98a;
     --red: #e74c3c;
     --green: #27ae60;
+    --orange: #e67e22;
     --bg: #f5f2ec;
     --card: #ffffff;
     --text: #1a1a2e;
@@ -277,6 +278,12 @@
     color: #155724;
     border: 1.5px solid #c3e6cb;
   }
+  .alert-box.warning {
+    display: block;
+    background: #fff3cd;
+    color: #856404;
+    border: 1.5px solid #ffc107;
+  }
 
   .time-display {
     font-family: 'Space Mono', monospace;
@@ -318,7 +325,7 @@
   }
   .tag-in { background: #d4edda; color: #155724; }
   .tag-out { background: #cce5ff; color: #004085; }
-  .tag-denied { background: #f8d7da; color: #721c24; }
+  .tag-overtime { background: #fff3cd; color: #856404; }
 
   .download-btn {
     margin-top: 12px;
@@ -368,6 +375,10 @@
     color: var(--muted);
     margin-top: 6px;
   }
+
+  .email-config { margin-top: 16px; }
+  .email-config label { font-size: 12px; }
+  .email-config input { font-size: 13px; padding: 8px 10px; }
 </style>
 </head>
 <body>
@@ -380,8 +391,9 @@
   </div>
 
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('setup')">⚙️ Setup QR</button>
-    <button class="tab-btn" onclick="switchTab('logs')">📋 Clock Logs</button>
+    <button class="tab-btn active" onclick="switchTab('setup', this)">Setup QR</button>
+    <button class="tab-btn" onclick="switchTab('logs', this)">Clock Logs</button>
+    <button class="tab-btn" onclick="switchTab('alerts', this)">Alerts</button>
   </div>
 
   <!-- SETUP TAB -->
@@ -389,7 +401,7 @@
     <p class="section-label">Jobsite Configuration</p>
     <div class="card">
       <div class="form-group">
-        <label>📍 Job / Project Name</label>
+        <label>Job / Project Name</label>
         <input type="text" id="jobName" placeholder="e.g. Smith Kitchen Remodel - 123 Main St">
       </div>
 
@@ -404,13 +416,21 @@
         </div>
       </div>
       <button class="btn btn-secondary" onclick="useMyLocation()" style="margin-bottom: 14px; font-size: 13px; padding: 10px;">
-        📱 Use My Current Location
+        Use My Current Location
       </button>
 
       <div class="form-group">
         <label>Allowed Radius (feet)</label>
         <input type="number" id="jobRadius" value="300" min="50" max="5000">
-        <p class="radius-note">Employees must be within this distance to clock in. 300 ft is recommended.</p>
+        <p class="radius-note">Employees must be within this distance to clock in. 300 ft recommended.</p>
+      </div>
+
+      <div class="email-config">
+        <div class="form-group">
+          <label>Office Email for Overtime Alerts</label>
+          <input type="email" id="alertEmail" placeholder="office@panoshomepros.com" value="">
+          <p class="radius-note">Gets notified when an employee exceeds 8 hours on a job.</p>
+        </div>
       </div>
 
       <button class="btn btn-primary" onclick="generateQR()">
@@ -430,10 +450,10 @@
         <p style="font-size:11px; color: var(--muted); margin-top:10px;">Scan to Clock In / Clock Out</p>
       </div>
       <button class="btn btn-primary" onclick="printQR()" style="margin-top: 16px;">
-        🖨️ Print QR Code
+        Print QR Code
       </button>
       <button class="btn btn-secondary" onclick="testEmployeeView()" style="margin-top: 10px;">
-        👁️ Preview Employee View
+        Preview Employee View
       </button>
     </div>
   </div>
@@ -444,10 +464,23 @@
     <div class="card">
       <div id="logContent">
         <p style="color: var(--muted); text-align: center; padding: 20px; font-size: 14px;">
-          No clock records yet. Records appear here when employees scan and clock in/out.
+          No clock records yet.
         </p>
       </div>
-      <button class="download-btn" onclick="downloadCSV()" id="csvBtn" style="display:none;">📥 Download CSV</button>
+      <button class="download-btn" onclick="downloadCSV()" id="csvBtn" style="display:none;">Download CSV</button>
+      <button class="download-btn" onclick="clearLogs()" id="clearBtn" style="display:none; margin-left:8px; background: var(--red);">Clear Logs</button>
+    </div>
+  </div>
+
+  <!-- ALERTS TAB -->
+  <div class="tab-content" id="tab-alerts">
+    <p class="section-label">Overtime Alerts</p>
+    <div class="card">
+      <div id="alertsContent">
+        <p style="color: var(--muted); text-align: center; padding: 20px; font-size: 14px;">
+          No overtime alerts.
+        </p>
+      </div>
     </div>
   </div>
 </div>
@@ -457,7 +490,7 @@
   <div class="clock-header">
     <div class="logo-icon" style="margin: 0 auto 10px;">P</div>
     <h2>Pano's Home Pros</h2>
-    <div class="job-name" id="empJobName">—</div>
+    <div class="job-name" id="empJobName">-</div>
   </div>
 
   <div class="time-display" id="currentTime">--:--:--</div>
@@ -471,129 +504,144 @@
 
   <div class="emp-form">
     <div class="form-group">
-      <label style="text-align:center;">Your Name</label>
+      <label style="text-align:center;">Your Name / Tu Nombre</label>
       <input type="text" id="empName" placeholder="First Last">
     </div>
 
     <button class="clock-btn clock-in" id="clockInBtn" disabled onclick="clockAction('in')">
-      ✅ CLOCK IN
+      CLOCK IN
     </button>
     <button class="clock-btn clock-out" id="clockOutBtn" disabled onclick="clockAction('out')" style="display:none; margin-top: 10px;">
-      🔴 CLOCK OUT
+      CLOCK OUT
     </button>
   </div>
 
   <div class="alert-box" id="alertBox"></div>
-
-  <!-- No visible admin link for employees -->
 </div>
 
 <!-- QR Code Library -->
 <script>
-// Minimal QR Code generator (qrcode-generator port)
 !function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this.parsedData=[];for(var b=0,d=this.data.length;b<d;b++){var e=[],f=this.data.charCodeAt(b);f>65536?(e[0]=240|(1835008&f)>>>18,e[1]=128|(258048&f)>>>12,e[2]=128|(4032&f)>>>6,e[3]=128|63&f):f>2048?(e[0]=224|(61440&f)>>>12,e[1]=128|(4032&f)>>>6,e[2]=128|63&f):f>128?(e[0]=192|(1984&f)>>>6,e[1]=128|63&f):e[0]=f,this.parsedData.push.apply(this.parsedData,e)}this.parsedData.length!=this.data.length&&(this.parsedData.unshift(191),this.parsedData.unshift(187),this.parsedData.unshift(239))}function b(a,b){this.typeNumber=a,this.errorCorrectLevel=b,this.modules=null,this.moduleCount=0,this.dataCache=null,this.dataList=[]}function e(a,b){if(void 0==a.length)throw new Error(a.length+"/"+b);for(var c=0;c<a.length&&0==a[c];)c++;this.num=new Array(a.length-c+b);for(var d=0;d<a.length-c;d++)this.num[d]=a[d+c]}function f(a,b){this.totalCount=a,this.dataCount=b}function g(){this.buffer=[],this.length=0}a.prototype={getLength:function(){return this.parsedData.length},write:function(a){for(var b=0,c=this.parsedData.length;b<c;b++)a.put(this.parsedData[b],8)}},b.prototype={addData:function(b){var c=new a(b);this.dataList.push(c),this.dataCache=null},isDark:function(a,b){if(0>a||this.moduleCount<=a||0>b||this.moduleCount<=b)throw new Error(a+","+b);return this.modules[a][b]},getModuleCount:function(){return this.moduleCount},make:function(){this.makeImpl(!1,this.getBestMaskPattern())},makeImpl:function(a,c){this.moduleCount=4*this.typeNumber+17,this.modules=new Array(this.moduleCount);for(var d=0;d<this.moduleCount;d++){this.modules[d]=new Array(this.moduleCount);for(var e=0;e<this.moduleCount;e++)this.modules[d][e]=null}this.setupPositionProbePattern(0,0),this.setupPositionProbePattern(this.moduleCount-7,0),this.setupPositionProbePattern(0,this.moduleCount-7),this.setupPositionAdjustPattern(),this.setupTimingPattern(),this.setupTypeInfo(a,c),this.typeNumber>=7&&this.setupTypeNumber(a),null==this.dataCache&&(this.dataCache=b.createData(this.typeNumber,this.errorCorrectLevel,this.dataList)),this.mapData(this.dataCache,c)},setupPositionProbePattern:function(a,b){for(var c=-1;7>=c;c++)if(!(-1>=a+c||this.moduleCount<=a+c))for(var d=-1;7>=d;d++)-1>=b+d||this.moduleCount<=b+d||(c>=0&&6>=c&&(0==d||6==d)||d>=0&&6>=d&&(0==c||6==c)||c>=2&&4>=c&&d>=2&&4>=d?this.modules[a+c][b+d]=!0:this.modules[a+c][b+d]=!1)},getBestMaskPattern:function(){for(var a=0,b=0,c=0;8>c;c++){this.makeImpl(!0,c);var d=h.getLostPoint(this);(0==c||a>d)&&(a=d,b=c)}return b},createMovieClip:function(){},setupTimingPattern:function(){for(var a=8;a<this.moduleCount-8;a++)null==this.modules[a][6]&&(this.modules[a][6]=a%2==0),null==this.modules[6][a]&&(this.modules[6][a]=a%2==0)},setupPositionAdjustPattern:function(){for(var a=h.getPatternPosition(this.typeNumber),b=0;b<a.length;b++)for(var c=0;c<a.length;c++){var d=a[b],e=a[c];if(null==this.modules[d][e])for(var f=-2;2>=f;f++)for(var g=-2;2>=g;g++)-2==f||2==f||-2==g||2==g||0==f&&0==g?this.modules[d+f][e+g]=!0:this.modules[d+f][e+g]=!1}},setupTypeNumber:function(a){for(var b=h.getBCHTypeNumber(this.typeNumber),c=0;18>c;c++){var d=!a&&1==(b>>c&1);this.modules[Math.floor(c/3)][c%3+this.moduleCount-8-3]=d}for(var c=0;18>c;c++){var d=!a&&1==(b>>c&1);this.modules[c%3+this.moduleCount-8-3][Math.floor(c/3)]=d}},setupTypeInfo:function(a,b){for(var c=this.errorCorrectLevel<<3|b,d=h.getBCHTypeInfo(c),e=0;15>e;e++){var f=!a&&1==(d>>e&1);6>e?this.modules[e][8]=f:8>e?this.modules[e+1][8]=f:this.modules[this.moduleCount-15+e][8]=f}for(var e=0;15>e;e++){var f=!a&&1==(d>>e&1);8>e?this.modules[8][this.moduleCount-e-1]=f:9>e?this.modules[8][15-e-1+1]=f:this.modules[8][15-e-1]=f}this.modules[this.moduleCount-8][8]=!a},mapData:function(a,b){for(var c=-1,d=this.moduleCount-1,e=7,f=0,g=this.moduleCount-1;g>0;g-=2)for(6==g&&g--;;){for(var i=0;2>i;i++)if(null==this.modules[d][g-i]){var j=!1;f<a.length&&(j=1==(a[f]>>>e&1)),h.getMask(b,d,g-i)&&(j=!j),this.modules[d][g-i]=j,e--,-1==e&&(f++,e=7)}if(d+=c,0>d||this.moduleCount<=d){d-=c,c=-c;break}}}},b.PAD0=236,b.PAD1=17,b.createData=function(a,c,d){for(var e=f.getRSBlocks(a,c),i=new g,j=0;j<d.length;j++){var k=d[j];i.put(k.mode,4),i.put(k.getLength(),h.getLengthInBits(k.mode,a)),k.write(i)}for(var l=0,j=0;j<e.length;j++)l+=e[j].dataCount;if(i.getLengthInBits()>8*l)throw new Error("code length overflow. ("+i.getLengthInBits()+">"+8*l+")");for(i.getLengthInBits()+4<=8*l&&i.put(0,4);i.getLengthInBits()%8!=0;)i.putBit(!1);for(;;){if(i.getLengthInBits()>=8*l)break;if(i.put(b.PAD0,8),i.getLengthInBits()>=8*l)break;i.put(b.PAD1,8)}return b.createBytes(i,e)},b.createBytes=function(a,b){for(var c=0,d=0,f=0,g=new Array(b.length),i=new Array(b.length),j=0;j<b.length;j++){var k=b[j].dataCount,l=b[j].totalCount-k;d=Math.max(d,k),f=Math.max(f,l),g[j]=new Array(k);for(var m=0;m<g[j].length;m++)g[j][m]=255&a.buffer[m+c];c+=k;var n=h.getErrorCorrectPolynomial(l),o=new e(g[j],n.getLength()-1),p=o.mod(n);i[j]=new Array(n.getLength()-1);for(var m=0;m<i[j].length;m++){var q=m+p.getLength()-i[j].length;i[j][m]=q>=0?p.get(q):0}}for(var r=0,m=0;m<b.length;m++)r+=b[m].totalCount;for(var s=new Array(r),t=0,m=0;m<d;m++)for(var j=0;j<b.length;j++)m<g[j].length&&(s[t++]=g[j][m]);for(var m=0;m<f;m++)for(var j=0;j<b.length;j++)m<i[j].length&&(s[t++]=i[j][m]);return s};for(var c={MODE_NUMBER:1,MODE_ALPHA_NUM:2,MODE_8BIT_BYTE:4,MODE_KANJI:8},h={PATTERN_POSITION_TABLE:[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],G15:1335,G18:7973,G15_MASK:21522,getBCHTypeInfo:function(a){for(var b=a<<10;h.getBCHDigit(b)-h.getBCHDigit(h.G15)>=0;)b^=h.G15<<h.getBCHDigit(b)-h.getBCHDigit(h.G15);return(a<<10|b)^h.G15_MASK},getBCHTypeNumber:function(a){for(var b=a<<12;h.getBCHDigit(b)-h.getBCHDigit(h.G18)>=0;)b^=h.G18<<h.getBCHDigit(b)-h.getBCHDigit(h.G18);return a<<12|b},getBCHDigit:function(a){for(var b=0;0!=a;)b++,a>>>=1;return b},getPatternPosition:function(a){return h.PATTERN_POSITION_TABLE[a-1]},getMask:function(a,b,c){switch(a){case 0:return(b+c)%2==0;case 1:return b%2==0;case 2:return c%3==0;case 3:return(b+c)%3==0;case 4:return(Math.floor(b/2)+Math.floor(c/3))%2==0;case 5:return b*c%2+b*c%3==0;case 6:return(b*c%2+b*c%3)%2==0;case 7:return(b*c%3+(b+c)%2)%2==0;default:throw new Error("bad maskPattern:"+a)}},getErrorCorrectPolynomial:function(a){for(var b=new e([1],0),c=0;c<a;c++)b=b.multiply(new e([1,i.gexp(c)],0));return b},getLengthInBits:function(a,b){if(b>=1&&b<10)switch(a){case c.MODE_NUMBER:return 10;case c.MODE_ALPHA_NUM:return 9;case c.MODE_8BIT_BYTE:return 8;case c.MODE_KANJI:return 8}else if(b<27)switch(a){case c.MODE_NUMBER:return 12;case c.MODE_ALPHA_NUM:return 11;case c.MODE_8BIT_BYTE:return 16;case c.MODE_KANJI:return 10}else{if(!(b<41))throw new Error("type:"+a+" num:"+b);switch(a){case c.MODE_NUMBER:return 14;case c.MODE_ALPHA_NUM:return 13;case c.MODE_8BIT_BYTE:return 16;case c.MODE_KANJI:return 12}}},getLostPoint:function(a){for(var b=a.getModuleCount(),c=0,d=0;d<b;d++)for(var e=0;e<b;e++){for(var f=0,g=a.isDark(d,e),h=-1;1>=h;h++)if(!(0>d+h||d+h>=b))for(var i=-1;1>=i;i++)0>e+i||e+i>=b||(0!=h||0!=i)&&g==a.isDark(d+h,e+i)&&f++;f>5&&(c+=3+f-5)}for(var d=0;d<b-1;d++)for(var e=0;e<b-1;e++){var j=0;a.isDark(d,e)&&j++,a.isDark(d+1,e)&&j++,a.isDark(d,e+1)&&j++,a.isDark(d+1,e+1)&&j++,(0==j||4==j)&&(c+=3)}for(var d=0;d<b;d++)for(var e=0;e<b-6;e++)a.isDark(d,e)&&!a.isDark(d,e+1)&&a.isDark(d,e+2)&&a.isDark(d,e+3)&&a.isDark(d,e+4)&&!a.isDark(d,e+5)&&a.isDark(d,e+6)&&(c+=40);for(var e=0;e<b;e++)for(var d=0;d<b-6;d++)a.isDark(d,e)&&!a.isDark(d+1,e)&&a.isDark(d+2,e)&&a.isDark(d+3,e)&&a.isDark(d+4,e)&&!a.isDark(d+5,e)&&a.isDark(d+6,e)&&(c+=40);for(var k=0,e=0;e<b;e++)for(var d=0;d<b;d++)a.isDark(d,e)&&k++;return c+=10*(Math.abs(100*k/b/b-50)/5)}},i={glog:function(a){if(1>a)throw new Error("glog("+a+")");return i.LOG_TABLE[a]},gexp:function(a){for(;0>a;)a+=255;for(;a>=256;)a-=255;return i.EXP_TABLE[a]},EXP_TABLE:new Array(256),LOG_TABLE:new Array(256)},j=0;8>j;j++)i.EXP_TABLE[j]=1<<j;for(var j=8;256>j;j++)i.EXP_TABLE[j]=i.EXP_TABLE[j-4]^i.EXP_TABLE[j-5]^i.EXP_TABLE[j-6]^i.EXP_TABLE[j-8];for(var j=0;255>j;j++)i.LOG_TABLE[i.EXP_TABLE[j]]=j;e.prototype={get:function(a){return this.num[a]},getLength:function(){return this.num.length},multiply:function(a){for(var b=new Array(this.getLength()+a.getLength()-1),c=0;c<this.getLength();c++)for(var d=0;d<a.getLength();d++)b[c+d]^=i.gexp(i.glog(this.get(c))+i.glog(a.get(d)));return new e(b,0)},mod:function(a){if(this.getLength()-a.getLength()<0)return this;for(var b=i.glog(this.get(0))-i.glog(a.get(0)),c=new Array(this.getLength()),d=0;d<this.getLength();d++)c[d]=this.get(d);for(var d=0;d<a.getLength();d++)c[d]^=i.gexp(i.glog(a.get(d))+b);return new e(c,0).mod(a)}},f.RS_BLOCK_TABLE=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]],f.getRSBlocks=function(a,b){var c=f.getRsBlockTable(a,b);if(void 0==c)throw new Error("bad rs block @ typeNumber:"+a+"/errorCorrectLevel:"+b);for(var d=c.length/3,e=[],g=0;g<d;g++)for(var h=c[3*g+0],i=c[3*g+1],j=c[3*g+2],k=0;k<h;k++)e.push(new f(i,j));return e},f.getRsBlockTable=function(a,b){switch(b){case 1:return f.RS_BLOCK_TABLE[4*(a-1)+0];case 0:return f.RS_BLOCK_TABLE[4*(a-1)+1];case 3:return f.RS_BLOCK_TABLE[4*(a-1)+2];case 2:return f.RS_BLOCK_TABLE[4*(a-1)+3]}},g.prototype={get:function(a){var b=Math.floor(a/8);return 1==(this.buffer[b]>>>7-a%8&1)},put:function(a,b){for(var c=0;c<b;c++)this.putBit(1==(a>>>b-c-1&1))},getLengthInBits:function(){return this.length},putBit:function(a){var b=Math.floor(this.length/8);this.buffer.length<=b&&this.buffer.push(0),a&&(this.buffer[b]|=128>>>this.length%8),this.length++}},window.QRCode=b,window.QRErrorCorrectLevel={L:1,M:0,Q:3,H:2}}();
 </script>
 
 <script>
-// ── Storage ──
-let clockLogs = JSON.parse(localStorage.getItem('panos_clock_logs') || '[]');
-let currentJobConfig = null;
+// ══════════════════════════════════════
+// PANO'S HOME PROS - CLOCK-IN SYSTEM
+// ══════════════════════════════════════
 
-// ── Tabs ──
-function switchTab(name) {
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  event.target.classList.add('active');
-  if (name === 'logs') renderLogs();
+var clockLogs = JSON.parse(localStorage.getItem('panos_clock_logs') || '[]');
+var overtimeAlerts = JSON.parse(localStorage.getItem('panos_overtime_alerts') || '[]');
+var currentJobConfig = null;
+var ADMIN_PASSWORD = 'Panos2024!';
+var MAX_HOURS = 8;
+var overtimeCheckInterval = null;
+var clockInterval = null;
+
+function getDeviceId() {
+  var id = localStorage.getItem('panos_device_id');
+  if (!id) {
+    id = 'DEV-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem('panos_device_id', id);
+  }
+  return id;
 }
 
-// ── Get current location for admin ──
+function getTodayStr() {
+  return new Date().toLocaleDateString('en-US');
+}
+
+function hasDeviceClockedInToday(job) {
+  var deviceId = getDeviceId();
+  var today = getTodayStr();
+  return clockLogs.some(function(log) {
+    return log.deviceId === deviceId && log.job === job && log.date === today && log.type === 'in';
+  });
+}
+
+function isDeviceCurrentlyClockedIn(job) {
+  var deviceId = getDeviceId();
+  var today = getTodayStr();
+  var todayLogs = clockLogs.filter(function(log) {
+    return log.deviceId === deviceId && log.job === job && log.date === today;
+  });
+  if (todayLogs.length === 0) return false;
+  return todayLogs[todayLogs.length - 1].type === 'in';
+}
+
+function getClockInTime(job) {
+  var deviceId = getDeviceId();
+  var today = getTodayStr();
+  var todayLogs = clockLogs.filter(function(log) {
+    return log.deviceId === deviceId && log.job === job && log.date === today && log.type === 'in';
+  });
+  if (todayLogs.length === 0) return null;
+  return new Date(todayLogs[todayLogs.length - 1].timestamp);
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'logs') renderLogs();
+  if (name === 'alerts') renderAlerts();
+}
+
 function useMyLocation() {
-  if (!navigator.geolocation) {
-    alert('Geolocation not supported');
-    return;
-  }
-  navigator.geolocation.getCurrentPosition(pos => {
+  if (!navigator.geolocation) { alert('Geolocation not supported'); return; }
+  navigator.geolocation.getCurrentPosition(function(pos) {
     document.getElementById('jobLat').value = pos.coords.latitude.toFixed(6);
     document.getElementById('jobLng').value = pos.coords.longitude.toFixed(6);
-  }, err => {
-    alert('Could not get location. Make sure location is enabled.');
+  }, function() {
+    alert('Could not get location.');
   }, { enableHighAccuracy: true });
 }
 
-// ── Generate QR ──
 function generateQR() {
-  const name = document.getElementById('jobName').value.trim();
-  const lat = parseFloat(document.getElementById('jobLat').value);
-  const lng = parseFloat(document.getElementById('jobLng').value);
-  const radius = parseInt(document.getElementById('jobRadius').value) || 300;
-
-  if (!name || isNaN(lat) || isNaN(lng)) {
-    alert('Please fill in Job Name, Latitude, and Longitude.');
-    return;
-  }
-
-  const config = { job: name, lat, lng, radius, created: new Date().toISOString() };
-  const dataStr = JSON.stringify(config);
-  // Encode as base64 for the QR
-  const encoded = btoa(unescape(encodeURIComponent(dataStr)));
-  // The QR will contain: PANOS_CLOCKIN:{base64data}
-  const qrContent = 'PANOS_CLOCKIN:' + encoded;
-
-  const qr = new QRCode(6, QRErrorCorrectLevel.M);
-  qr.addData(qrContent);
+  var name = document.getElementById('jobName').value.trim();
+  var lat = parseFloat(document.getElementById('jobLat').value);
+  var lng = parseFloat(document.getElementById('jobLng').value);
+  var radius = parseInt(document.getElementById('jobRadius').value) || 300;
+  var alertEmail = document.getElementById('alertEmail').value.trim();
+  if (!name || isNaN(lat) || isNaN(lng)) { alert('Fill in Job Name, Latitude, and Longitude.'); return; }
+  var config = { job: name, lat: lat, lng: lng, radius: radius, email: alertEmail };
+  var encoded = btoa(unescape(encodeURIComponent(JSON.stringify(config))));
+  var baseUrl = window.location.origin + window.location.pathname;
+  var fullUrl = baseUrl + '#clockin=' + encoded;
+  var qr = new QRCode(10, QRErrorCorrectLevel.M);
+  qr.addData(fullUrl);
   qr.make();
-
-  const canvas = document.getElementById('qrCanvas');
-  const ctx = canvas.getContext('2d');
-  const moduleCount = qr.getModuleCount();
-  const cellSize = 8;
-  const margin = 24;
-  const size = moduleCount * cellSize + margin * 2;
+  var canvas = document.getElementById('qrCanvas');
+  var ctx = canvas.getContext('2d');
+  var moduleCount = qr.getModuleCount();
+  var cellSize = 6;
+  var margin = 20;
+  var size = moduleCount * cellSize + margin * 2;
   canvas.width = size;
   canvas.height = size;
-
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, size, size);
-
   ctx.fillStyle = '#0f1a2e';
-  for (let r = 0; r < moduleCount; r++) {
-    for (let c = 0; c < moduleCount; c++) {
+  for (var r = 0; r < moduleCount; r++) {
+    for (var c = 0; c < moduleCount; c++) {
       if (qr.isDark(r, c)) {
-        ctx.beginPath();
-        ctx.roundRect(margin + c * cellSize, margin + r * cellSize, cellSize - 0.5, cellSize - 0.5, 1.5);
-        ctx.fill();
+        ctx.fillRect(margin + c * cellSize, margin + r * cellSize, cellSize - 0.5, cellSize - 0.5);
       }
     }
   }
-
   document.getElementById('qrJobLabel').textContent = name;
   document.getElementById('qrResult').classList.add('show');
   currentJobConfig = config;
 }
 
-// ── Print QR ──
 function printQR() {
-  const canvas = document.getElementById('qrCanvas');
-  const dataUrl = canvas.toDataURL();
-  const job = document.getElementById('jobName').value;
-  const w = window.open('', '_blank');
-  w.document.write(`
-    <html><head><title>QR - ${job}</title>
-    <style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;text-align:center;}
-    img{width:280px;height:280px;margin:20px 0;}</style></head>
-    <body>
-      <h2 style="margin:0;">Pano's Home Pros</h2>
-      <p style="color:#666;margin:4px 0 0;">${job}</p>
-      <img src="${dataUrl}">
-      <p style="font-size:14px;color:#888;">Scan to Clock In / Clock Out</p>
-      <script>window.print();<\/script>
-    </body></html>
-  `);
+  var canvas = document.getElementById('qrCanvas');
+  var dataUrl = canvas.toDataURL();
+  var job = document.getElementById('jobName').value;
+  var w = window.open('', '_blank');
+  w.document.write('<html><head><title>QR - ' + job + '</title><style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;text-align:center;}img{width:280px;height:280px;margin:20px 0;}</style></head><body><h2 style="margin:0;">Pano\'s Home Pros</h2><p style="color:#666;margin:4px 0 0;">' + job + '</p><img src="' + dataUrl + '"><p style="font-size:14px;color:#888;">Scan to Clock In / Clock Out</p><script>window.print();<\/script></body></html>');
 }
 
-// ── Employee View ──
 function testEmployeeView() {
   if (!currentJobConfig) return;
   showEmployeeView(currentJobConfig);
@@ -606,240 +654,272 @@ function showEmployeeView(config) {
   currentJobConfig = config;
   startClock();
   verifyLocation(config);
+  checkDeviceState(config);
+}
+
+function checkDeviceState(config) {
+  var clockInBtn = document.getElementById('clockInBtn');
+  var clockOutBtn = document.getElementById('clockOutBtn');
+  var alertBox = document.getElementById('alertBox');
+  if (isDeviceCurrentlyClockedIn(config.job)) {
+    clockInBtn.style.display = 'none';
+    clockOutBtn.style.display = 'block';
+    alertBox.className = 'alert-box warning';
+    alertBox.innerHTML = '⏱️ <strong>Currently clocked in</strong> on this job.<br>Don\'t forget to clock out! / No olvides hacer clock out!';
+    startOvertimeCheck(config);
+  } else if (hasDeviceClockedInToday(config.job)) {
+    clockInBtn.style.display = 'block';
+    clockInBtn.disabled = true;
+    clockOutBtn.style.display = 'none';
+    alertBox.className = 'alert-box error';
+    alertBox.innerHTML = '🚫 <strong>Already clocked in/out today on this job.</strong><br>You cannot clock in again from this device on the same project today.<br><br>Ya hiciste clock in/out hoy en este proyecto. No puedes hacerlo de nuevo desde este dispositivo.';
+  }
 }
 
 function backToAdmin() {
-  const pw = prompt('Admin Password / Contraseña de Admin:');
-  if (pw === 'Panos2024!') {
+  var pw = prompt('Admin Password / Contraseña de Admin:');
+  if (pw === ADMIN_PASSWORD) {
     document.getElementById('adminPanel').classList.remove('hidden');
     document.getElementById('employeeView').classList.remove('active');
+    if (overtimeCheckInterval) clearInterval(overtimeCheckInterval);
   } else if (pw !== null) {
     alert('Incorrect password / Contraseña incorrecta');
   }
 }
 
-// ── Live Clock ──
-let clockInterval;
 function startClock() {
   function update() {
-    const now = new Date();
-    document.getElementById('currentTime').textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    document.getElementById('currentTime').textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
   update();
-  clearInterval(clockInterval);
+  if (clockInterval) clearInterval(clockInterval);
   clockInterval = setInterval(update, 1000);
 }
 
-// ── GPS Verification ──
 function verifyLocation(config) {
-  const badge = document.getElementById('statusBadge');
-  const statusText = document.getElementById('statusText');
-  const clockInBtn = document.getElementById('clockInBtn');
-  const clockOutBtn = document.getElementById('clockOutBtn');
-  const alertBox = document.getElementById('alertBox');
-
+  var badge = document.getElementById('statusBadge');
+  var statusText = document.getElementById('statusText');
+  var clockInBtn = document.getElementById('clockInBtn');
+  var clockOutBtn = document.getElementById('clockOutBtn');
+  var alertBox = document.getElementById('alertBox');
   badge.className = 'status-badge checking';
   statusText.textContent = 'Checking location...';
   clockInBtn.disabled = true;
-  alertBox.className = 'alert-box';
-  alertBox.style.display = 'none';
-
   if (!navigator.geolocation) {
     badge.className = 'status-badge denied';
     statusText.textContent = 'GPS not available';
     alertBox.className = 'alert-box error';
-    alertBox.innerHTML = '⚠️ <strong>GPS Required</strong><br>This device does not support GPS. You cannot clock in without location verification.';
+    alertBox.innerHTML = '⚠️ <strong>GPS Required / Se necesita GPS</strong>';
     return;
   }
-
-  navigator.geolocation.getCurrentPosition(pos => {
-    const dist = getDistanceFeet(pos.coords.latitude, pos.coords.longitude, config.lat, config.lng);
-    const allowed = dist <= config.radius;
-
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    var dist = getDistanceFeet(pos.coords.latitude, pos.coords.longitude, config.lat, config.lng);
+    var allowed = dist <= config.radius;
     if (allowed) {
       badge.className = 'status-badge verified';
-      statusText.textContent = `✓ On Jobsite (${Math.round(dist)} ft away)`;
-      clockInBtn.disabled = false;
-      clockOutBtn.disabled = false;
+      statusText.textContent = 'On Jobsite (' + Math.round(dist) + ' ft away)';
+      if (!hasDeviceClockedInToday(config.job) || isDeviceCurrentlyClockedIn(config.job)) {
+        if (isDeviceCurrentlyClockedIn(config.job)) {
+          clockOutBtn.disabled = false;
+        } else if (!hasDeviceClockedInToday(config.job)) {
+          clockInBtn.disabled = false;
+        }
+      }
     } else {
       badge.className = 'status-badge denied';
-      statusText.textContent = `✗ NOT at Jobsite (${Math.round(dist)} ft away)`;
+      statusText.textContent = 'NOT at Jobsite (' + Math.round(dist) + ' ft away)';
       clockInBtn.disabled = true;
       clockOutBtn.disabled = true;
       alertBox.className = 'alert-box error';
-      alertBox.innerHTML = `🚫 <strong>ALERTA — No estás en el lugar de trabajo</strong><br>
-        Estás a ${Math.round(dist)} pies del jobsite. Necesitas estar dentro de ${config.radius} pies para hacer clock in.<br><br>
-        <strong>ALERT — You are NOT at the jobsite</strong><br>
-        You are ${Math.round(dist)} feet away. You must be within ${config.radius} feet to clock in.`;
+      alertBox.innerHTML = '🚫 <strong>ALERTA — No estás en el lugar de trabajo</strong><br>Estás a ' + Math.round(dist) + ' pies del jobsite. Necesitas estar dentro de ' + config.radius + ' pies.<br><br><strong>ALERT — You are NOT at the jobsite</strong><br>You are ' + Math.round(dist) + ' feet away. Must be within ' + config.radius + ' feet.';
     }
-  }, err => {
+  }, function() {
     badge.className = 'status-badge denied';
     statusText.textContent = 'Location denied';
     alertBox.className = 'alert-box error';
-    alertBox.innerHTML = '⚠️ <strong>Location permission required</strong><br>Please allow location access to clock in. / <strong>Se necesita permiso de ubicación.</strong>';
+    alertBox.innerHTML = '⚠️ <strong>Location permission required / Se necesita permiso de ubicación</strong>';
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
 
-// ── Distance calc (Haversine) ──
 function getDistanceFeet(lat1, lon1, lat2, lon2) {
-  const R = 20902231; // Earth radius in feet
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  var R = 20902231;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLon = (lon2 - lon1) * Math.PI / 180;
+  var a = Math.pow(Math.sin(dLat / 2), 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.pow(Math.sin(dLon / 2), 2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ── Clock Action ──
 function clockAction(type) {
-  const name = document.getElementById('empName').value.trim();
-  if (!name) {
-    alert('Please enter your name / Ingresa tu nombre');
+  var name = document.getElementById('empName').value.trim();
+  if (!name) { alert('Please enter your name / Ingresa tu nombre'); return; }
+  var deviceId = getDeviceId();
+  if (type === 'in' && hasDeviceClockedInToday(currentJobConfig.job) && !isDeviceCurrentlyClockedIn(currentJobConfig.job)) {
+    var alertBox = document.getElementById('alertBox');
+    alertBox.className = 'alert-box error';
+    alertBox.innerHTML = '🚫 <strong>This device already clocked in/out today on this job.</strong><br>Este dispositivo ya hizo clock in/out hoy en este proyecto.';
     return;
   }
-
-  const now = new Date();
-  const entry = {
+  var now = new Date();
+  var entry = {
     employee: name,
     job: currentJobConfig.job,
     type: type,
     timestamp: now.toISOString(),
     date: now.toLocaleDateString('en-US'),
     time: now.toLocaleTimeString('en-US'),
+    deviceId: deviceId
   };
-
+  if (type === 'out') {
+    var clockInTime = getClockInTime(currentJobConfig.job);
+    if (clockInTime) {
+      entry.hoursWorked = parseFloat(((now - clockInTime) / (1000 * 60 * 60)).toFixed(2));
+    }
+  }
   clockLogs.push(entry);
   localStorage.setItem('panos_clock_logs', JSON.stringify(clockLogs));
-
-  const alertBox = document.getElementById('alertBox');
+  var alertBox = document.getElementById('alertBox');
   if (type === 'in') {
     alertBox.className = 'alert-box success';
-    alertBox.innerHTML = `✅ <strong>${name}</strong> clocked IN at ${entry.time}<br>Job: ${entry.job}`;
+    alertBox.innerHTML = '✅ <strong>' + name + '</strong> clocked IN at ' + entry.time + '<br>Job: ' + entry.job + '<br><br>⚠️ <strong>Remember to clock out!</strong> / Recuerda hacer clock out!';
     document.getElementById('clockInBtn').style.display = 'none';
     document.getElementById('clockOutBtn').style.display = 'block';
+    document.getElementById('clockOutBtn').disabled = false;
+    startOvertimeCheck(currentJobConfig);
   } else {
+    if (overtimeCheckInterval) clearInterval(overtimeCheckInterval);
+    var hoursMsg = '';
+    if (entry.hoursWorked) {
+      hoursMsg = '<br>Hours worked: <strong>' + entry.hoursWorked + ' hrs</strong>';
+      if (entry.hoursWorked > MAX_HOURS) {
+        hoursMsg += '<br>⚠️ <strong>OVERTIME: Exceeded ' + MAX_HOURS + ' hours!</strong>';
+        triggerOvertimeAlert(name, entry.job, entry.hoursWorked);
+      }
+    }
     alertBox.className = 'alert-box success';
-    alertBox.innerHTML = `🔴 <strong>${name}</strong> clocked OUT at ${entry.time}<br>Job: ${entry.job}`;
+    alertBox.innerHTML = '🔴 <strong>' + name + '</strong> clocked OUT at ' + entry.time + '<br>Job: ' + entry.job + hoursMsg;
     document.getElementById('clockOutBtn').style.display = 'none';
     document.getElementById('clockInBtn').style.display = 'block';
+    document.getElementById('clockInBtn').disabled = true;
   }
 }
 
-// ── Logs ──
+function startOvertimeCheck(config) {
+  if (overtimeCheckInterval) clearInterval(overtimeCheckInterval);
+  overtimeCheckInterval = setInterval(function() {
+    var clockInTime = getClockInTime(config.job);
+    if (!clockInTime) return;
+    var hoursWorked = (new Date() - clockInTime) / (1000 * 60 * 60);
+    if (hoursWorked >= MAX_HOURS) {
+      var alertBox = document.getElementById('alertBox');
+      alertBox.className = 'alert-box warning';
+      var empName = document.getElementById('empName').value.trim() || 'Employee';
+      alertBox.innerHTML = '⚠️ <strong>OVERTIME ALERT / ALERTA DE HORAS EXTRA</strong><br>' + empName + ' has been clocked in for <strong>' + hoursWorked.toFixed(1) + ' hours</strong>.<br>Please clock out. / Por favor haz clock out.<br>The office has been notified. / La oficina ha sido notificada.';
+      triggerOvertimeAlert(empName, config.job, hoursWorked.toFixed(2));
+      clearInterval(overtimeCheckInterval);
+    }
+  }, 60000);
+}
+
+function triggerOvertimeAlert(employee, job, hours) {
+  var alertEntry = {
+    employee: employee, job: job, hours: hours,
+    timestamp: new Date().toISOString(),
+    date: new Date().toLocaleDateString('en-US'),
+    time: new Date().toLocaleTimeString('en-US')
+  };
+  var isDuplicate = overtimeAlerts.some(function(a) {
+    return a.employee === employee && a.job === job && a.date === alertEntry.date;
+  });
+  if (isDuplicate) return;
+  overtimeAlerts.push(alertEntry);
+  localStorage.setItem('panos_overtime_alerts', JSON.stringify(overtimeAlerts));
+  if (currentJobConfig && currentJobConfig.email) {
+    var subject = 'OVERTIME ALERT - ' + employee + ' - ' + job;
+    var body = 'Employee: ' + employee + '%0AJob: ' + job + '%0AHours: ' + hours + '%0ADate: ' + alertEntry.date + '%0ATime: ' + alertEntry.time + '%0A%0AExceeded ' + MAX_HOURS + ' hours on jobsite.';
+    var mailLink = document.createElement('a');
+    mailLink.href = 'mailto:' + currentJobConfig.email + '?subject=' + encodeURIComponent(subject) + '&body=' + body;
+    mailLink.click();
+  }
+}
+
 function renderLogs() {
-  const container = document.getElementById('logContent');
+  var container = document.getElementById('logContent');
   if (clockLogs.length === 0) {
     container.innerHTML = '<p style="color: var(--muted); text-align: center; padding: 20px; font-size: 14px;">No records yet.</p>';
     document.getElementById('csvBtn').style.display = 'none';
+    document.getElementById('clearBtn').style.display = 'none';
     return;
   }
-
   document.getElementById('csvBtn').style.display = 'inline-block';
-  const rows = clockLogs.slice().reverse().slice(0, 50);
-  let html = '<table class="log-table"><thead><tr><th>Employee</th><th>Type</th><th>Date</th><th>Time</th><th>Job</th></tr></thead><tbody>';
-  rows.forEach(r => {
-    const tagClass = r.type === 'in' ? 'tag-in' : (r.type === 'out' ? 'tag-out' : 'tag-denied');
-    html += `<tr>
-      <td><strong>${r.employee}</strong></td>
-      <td><span class="tag ${tagClass}">${r.type.toUpperCase()}</span></td>
-      <td>${r.date}</td>
-      <td>${r.time}</td>
-      <td>${r.job}</td>
-    </tr>`;
+  document.getElementById('clearBtn').style.display = 'inline-block';
+  var rows = clockLogs.slice().reverse().slice(0, 100);
+  var html = '<table class="log-table"><thead><tr><th>Employee</th><th>Type</th><th>Date</th><th>Time</th><th>Job</th><th>Hours</th></tr></thead><tbody>';
+  rows.forEach(function(r) {
+    var tagClass = r.type === 'in' ? 'tag-in' : 'tag-out';
+    var hours = r.hoursWorked ? r.hoursWorked + 'h' : '-';
+    var flag = (r.hoursWorked && r.hoursWorked > MAX_HOURS) ? ' ⚠️' : '';
+    html += '<tr><td><strong>' + r.employee + '</strong></td><td><span class="tag ' + tagClass + '">' + r.type.toUpperCase() + '</span></td><td>' + r.date + '</td><td>' + r.time + '</td><td>' + r.job + '</td><td>' + hours + flag + '</td></tr>';
   });
   html += '</tbody></table>';
   container.innerHTML = html;
 }
 
-// ── CSV Download ──
+function renderAlerts() {
+  var container = document.getElementById('alertsContent');
+  if (overtimeAlerts.length === 0) {
+    container.innerHTML = '<p style="color: var(--muted); text-align: center; padding: 20px; font-size: 14px;">No overtime alerts.</p>';
+    return;
+  }
+  var html = '<table class="log-table"><thead><tr><th>Employee</th><th>Job</th><th>Hours</th><th>Date</th><th>Time</th></tr></thead><tbody>';
+  overtimeAlerts.slice().reverse().forEach(function(a) {
+    html += '<tr><td><strong>' + a.employee + '</strong></td><td>' + a.job + '</td><td><span class="tag tag-overtime">⚠️ ' + a.hours + 'h</span></td><td>' + a.date + '</td><td>' + a.time + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
 function downloadCSV() {
   if (clockLogs.length === 0) return;
-  let csv = 'Employee,Type,Date,Time,Job\n';
-  clockLogs.forEach(r => {
-    csv += `"${r.employee}","${r.type}","${r.date}","${r.time}","${r.job}"\n`;
+  var csv = 'Employee,Type,Date,Time,Job,Hours Worked,Device ID\n';
+  clockLogs.forEach(function(r) {
+    csv += '"' + r.employee + '","' + r.type + '","' + r.date + '","' + r.time + '","' + r.job + '","' + (r.hoursWorked || '') + '","' + (r.deviceId || '') + '"\n';
   });
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const a = document.createElement('a');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'panos_clock_records.csv';
+  a.download = 'panos_clock_records_' + getTodayStr().replace(/\//g, '-') + '.csv';
   a.click();
 }
 
-// ── QR Scanner simulation (for when scanned from phone camera) ──
-// In production, the QR contains a data string starting with PANOS_CLOCKIN:
-// When a phone camera scans it, since it's not a URL, it will show the raw text.
-// To make it a URL-based system, we use hash routing:
-window.addEventListener('load', () => {
-  const hash = window.location.hash;
-  if (hash && hash.startsWith('#clockin=')) {
+function clearLogs() {
+  if (confirm('Clear all clock logs? This cannot be undone.\nBorrar todos los registros?')) {
+    clockLogs = [];
+    localStorage.setItem('panos_clock_logs', '[]');
+    renderLogs();
+  }
+}
+
+window.addEventListener('load', function() {
+  var hash = window.location.hash;
+  if (hash && hash.indexOf('#clockin=') === 0) {
     try {
-      const encoded = hash.replace('#clockin=', '');
-      const decoded = decodeURIComponent(escape(atob(encoded)));
-      const config = JSON.parse(decoded);
+      var encoded = hash.replace('#clockin=', '');
+      var decoded = decodeURIComponent(escape(atob(encoded)));
+      var config = JSON.parse(decoded);
       showEmployeeView(config);
     } catch (e) {
       console.error('Invalid QR data');
     }
   } else {
-    // No QR hash = admin access, require password
     document.getElementById('adminPanel').classList.add('hidden');
-    const pw = prompt('Admin Password / Contraseña de Admin:');
-    if (pw === 'Panos2024!') {
+    var pw = prompt('Admin Password / Contraseña de Admin:');
+    if (pw === ADMIN_PASSWORD) {
       document.getElementById('adminPanel').classList.remove('hidden');
     } else {
-      document.body.innerHTML = '<div style="text-align:center;padding:60px 20px;font-family:sans-serif;"><h2>⛔ Access Denied / Acceso Denegado</h2><p style="color:#666;margin-top:12px;">Contact your supervisor for access.<br>Contacta a tu supervisor para acceso.</p></div>';
+      document.body.innerHTML = '<div style="text-align:center;padding:60px 20px;font-family:sans-serif;"><h2>Access Denied / Acceso Denegado</h2><p style="color:#666;margin-top:12px;">Contact your supervisor.<br>Contacta a tu supervisor.</p></div>';
     }
   }
 });
-
-// Override generateQR to create URL-based QR codes
-const originalGenerateQR = generateQR;
-window.generateQR = function() {
-  const name = document.getElementById('jobName').value.trim();
-  const lat = parseFloat(document.getElementById('jobLat').value);
-  const lng = parseFloat(document.getElementById('jobLng').value);
-  const radius = parseInt(document.getElementById('jobRadius').value) || 300;
-
-  if (!name || isNaN(lat) || isNaN(lng)) {
-    alert('Please fill in Job Name, Latitude, and Longitude.');
-    return;
-  }
-
-  const config = { job: name, lat, lng, radius };
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(config))));
-
-  // Build URL that points to THIS page with hash data
-  const baseUrl = window.location.origin + window.location.pathname;
-  const fullUrl = baseUrl + '#clockin=' + encoded;
-
-  const qr = new QRCode(10, QRErrorCorrectLevel.M);
-  qr.addData(fullUrl);
-  qr.make();
-
-  const canvas = document.getElementById('qrCanvas');
-  const ctx = canvas.getContext('2d');
-  const moduleCount = qr.getModuleCount();
-  const cellSize = 6;
-  const margin = 20;
-  const size = moduleCount * cellSize + margin * 2;
-  canvas.width = size;
-  canvas.height = size;
-
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, size, size);
-
-  ctx.fillStyle = '#0f1a2e';
-  for (let r = 0; r < moduleCount; r++) {
-    for (let c = 0; c < moduleCount; c++) {
-      if (qr.isDark(r, c)) {
-        ctx.fillRect(margin + c * cellSize, margin + r * cellSize, cellSize - 0.5, cellSize - 0.5);
-      }
-    }
-  }
-
-  document.getElementById('qrJobLabel').textContent = name;
-  document.getElementById('qrResult').classList.add('show');
-  currentJobConfig = config;
-};
 </script>
 
 </body>
