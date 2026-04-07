@@ -787,6 +787,7 @@ function clockAction(type) {
     startOvertimeCheck(currentJobConfig);
   } else {
     if (overtimeCheckInterval) clearInterval(overtimeCheckInterval);
+    if (geofenceWatchId) { navigator.geolocation.clearWatch(geofenceWatchId); geofenceWatchId = null; }
     var hoursMsg = '';
     if (entry.hoursWorked) {
       hoursMsg = '<br>Hours worked: <strong>' + entry.hoursWorked + ' hrs</strong>';
@@ -803,8 +804,15 @@ function clockAction(type) {
   }
 }
 
+var geofenceWatchId = null;
+var outsideCount = 0;
+var OUTSIDE_CHECKS_BEFORE_CLOCKOUT = 3;
+
 function startOvertimeCheck(config) {
   if (overtimeCheckInterval) clearInterval(overtimeCheckInterval);
+  outsideCount = 0;
+
+  // Check overtime every 60 seconds
   overtimeCheckInterval = setInterval(function() {
     var clockInTime = getClockInTime(config.job);
     if (!clockInTime) return;
@@ -815,9 +823,86 @@ function startOvertimeCheck(config) {
       var empName = document.getElementById('empName').value.trim() || 'Employee';
       alertBox.innerHTML = '⚠️ <strong>OVERTIME ALERT / ALERTA DE HORAS EXTRA</strong><br>' + empName + ' has been clocked in for <strong>' + hoursWorked.toFixed(1) + ' hours</strong>.<br>Please clock out. / Por favor haz clock out.<br>The office has been notified. / La oficina ha sido notificada.';
       triggerOvertimeAlert(empName, config.job, hoursWorked.toFixed(2));
-      clearInterval(overtimeCheckInterval);
     }
   }, 60000);
+
+  // Start GPS geofence monitoring — watch position continuously
+  startGeofenceMonitor(config);
+}
+
+function startGeofenceMonitor(config) {
+  if (geofenceWatchId) navigator.geolocation.clearWatch(geofenceWatchId);
+  if (!navigator.geolocation) return;
+
+  geofenceWatchId = navigator.geolocation.watchPosition(function(pos) {
+    var dist = getDistanceFeet(pos.coords.latitude, pos.coords.longitude, config.lat, config.lng);
+    var badge = document.getElementById('statusBadge');
+    var statusText = document.getElementById('statusText');
+
+    if (dist > config.radius) {
+      outsideCount++;
+      badge.className = 'status-badge denied';
+      statusText.textContent = 'LEFT Jobsite (' + Math.round(dist) + ' ft away)';
+
+      // After 3 consecutive checks outside the radius, auto clock-out
+      if (outsideCount >= OUTSIDE_CHECKS_BEFORE_CLOCKOUT && isDeviceCurrentlyClockedIn(config.job)) {
+        autoClockOut(config);
+      }
+    } else {
+      outsideCount = 0;
+      badge.className = 'status-badge verified';
+      statusText.textContent = 'On Jobsite (' + Math.round(dist) + ' ft away)';
+    }
+  }, function() {
+    // GPS error — don't auto clock out on error, just log
+    console.log('Geofence: GPS error during monitoring');
+  }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 30000 });
+}
+
+function autoClockOut(config) {
+  var empName = document.getElementById('empName').value.trim() || 'Employee';
+  var deviceId = getDeviceId();
+  var now = new Date();
+  var clockInTime = getClockInTime(config.job);
+  var hoursWorked = clockInTime ? parseFloat(((now - clockInTime) / (1000 * 60 * 60)).toFixed(2)) : 0;
+
+  var entry = {
+    employee: empName,
+    job: config.job,
+    type: 'out',
+    timestamp: now.toISOString(),
+    date: now.toLocaleDateString('en-US'),
+    time: now.toLocaleTimeString('en-US'),
+    deviceId: deviceId,
+    hoursWorked: hoursWorked,
+    autoClockOut: true
+  };
+
+  clockLogs.push(entry);
+  localStorage.setItem('panos_clock_logs', JSON.stringify(clockLogs));
+
+  // Stop all monitoring
+  if (overtimeCheckInterval) clearInterval(overtimeCheckInterval);
+  if (geofenceWatchId) navigator.geolocation.clearWatch(geofenceWatchId);
+  geofenceWatchId = null;
+
+  // Update UI
+  var alertBox = document.getElementById('alertBox');
+  alertBox.className = 'alert-box warning';
+  alertBox.innerHTML = '📍 <strong>AUTO CLOCK-OUT</strong><br>' +
+    '<strong>' + empName + '</strong> was automatically clocked out at ' + entry.time +
+    ' because you left the jobsite.<br>Hours worked: <strong>' + hoursWorked + ' hrs</strong>' +
+    '<br><br>📍 <strong>CLOCK-OUT AUTOMÁTICO</strong><br>' +
+    'Se hizo clock-out automático porque saliste del lugar de trabajo.';
+
+  document.getElementById('clockOutBtn').style.display = 'none';
+  document.getElementById('clockInBtn').style.display = 'block';
+  document.getElementById('clockInBtn').disabled = true;
+
+  // Check overtime
+  if (hoursWorked > MAX_HOURS) {
+    triggerOvertimeAlert(empName, config.job, hoursWorked);
+  }
 }
 
 function triggerOvertimeAlert(employee, job, hours) {
@@ -856,9 +941,11 @@ function renderLogs() {
   var html = '<table class="log-table"><thead><tr><th>Employee</th><th>Type</th><th>Date</th><th>Time</th><th>Job</th><th>Hours</th></tr></thead><tbody>';
   rows.forEach(function(r) {
     var tagClass = r.type === 'in' ? 'tag-in' : 'tag-out';
+    var typeLabel = r.type.toUpperCase();
+    if (r.autoClockOut) { tagClass = 'tag-overtime'; typeLabel = 'AUTO-OUT'; }
     var hours = r.hoursWorked ? r.hoursWorked + 'h' : '-';
     var flag = (r.hoursWorked && r.hoursWorked > MAX_HOURS) ? ' ⚠️' : '';
-    html += '<tr><td><strong>' + r.employee + '</strong></td><td><span class="tag ' + tagClass + '">' + r.type.toUpperCase() + '</span></td><td>' + r.date + '</td><td>' + r.time + '</td><td>' + r.job + '</td><td>' + hours + flag + '</td></tr>';
+    html += '<tr><td><strong>' + r.employee + '</strong></td><td><span class="tag ' + tagClass + '">' + typeLabel + '</span></td><td>' + r.date + '</td><td>' + r.time + '</td><td>' + r.job + '</td><td>' + hours + flag + '</td></tr>';
   });
   html += '</tbody></table>';
   container.innerHTML = html;
@@ -880,9 +967,9 @@ function renderAlerts() {
 
 function downloadCSV() {
   if (clockLogs.length === 0) return;
-  var csv = 'Employee,Type,Date,Time,Job,Hours Worked,Device ID\n';
+  var csv = 'Employee,Type,Date,Time,Job,Hours Worked,Auto ClockOut,Device ID\n';
   clockLogs.forEach(function(r) {
-    csv += '"' + r.employee + '","' + r.type + '","' + r.date + '","' + r.time + '","' + r.job + '","' + (r.hoursWorked || '') + '","' + (r.deviceId || '') + '"\n';
+    csv += '"' + r.employee + '","' + r.type + '","' + r.date + '","' + r.time + '","' + r.job + '","' + (r.hoursWorked || '') + '","' + (r.autoClockOut ? 'YES' : '') + '","' + (r.deviceId || '') + '"\n';
   });
   var blob = new Blob([csv], { type: 'text/csv' });
   var a = document.createElement('a');
